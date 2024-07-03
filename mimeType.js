@@ -14,6 +14,7 @@ module.exports = mimeType = {
     '.pdf': 'application/pdf',
     '.zip': 'application/zip',
     '.doc': 'application/msword',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     '.eot': 'application/vnd.ms-fontobject',
     '.ttf': 'application/x-font-ttf',
   };
