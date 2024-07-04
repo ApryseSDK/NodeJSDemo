@@ -91,3 +91,46 @@ app.get('/convert/:filename', (req, res) => {
   });
 
 });
+
+app.get('/convertToDOCX/:filename', (req, res) => {
+
+  const filename = req.params.filename;
+  let ext = path.parse(filename).ext;
+
+  const inputPath = path.resolve(__dirname, filesPath, filename);
+  const outputPath = path.resolve(__dirname, filesPath, `${filename}.docx`);
+
+  if (ext !== '.pdf') {
+    res.statusCode = 500;
+    res.end(`File is not a PDF.`);
+  }
+
+  const main = async () => {
+    await PDFNet.addResourceSearchPath('./lib/');
+    // check if the module is available
+    if (!(await PDFNet.StructuredOutputModule.isModuleAvailable())) {
+      res.statusCode = 500;
+      res.end(`Module not available..`);
+    }
+    await PDFNet.Convert.fileToWord(inputPath, outputPath)
+    ext = '.docx';
+  };
+
+  PDFNet.runWithCleanup(main, "[Your license key]").then(() => {
+    PDFNet.shutdown();
+    fs.readFile(outputPath, (err, data) => {
+      if (err) {
+        res.statusCode = 500;
+        res.end(err);
+      } else {
+        console.log(ext);
+        res.setHeader('Content-Type', mimeType[ext]),
+          res.end(data);
+      }
+    })
+  }).catch(err => {
+    res.statusCode = 500;
+    console.log(err)
+    res.send({ err });
+  });
+});
