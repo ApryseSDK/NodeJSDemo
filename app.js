@@ -25,10 +25,14 @@ app.get('/files', (req, res) => {
   const inputPath = path.resolve(__dirname, filesPath);
   fs.readdir(inputPath, function (err, files) {
     if (err) {
-      return console.log('Unable to scan directory: ' + err);
+     console.log('Unable to scan directory: ' + err);
+     res.statusCode = 500;
+     res.end(`Unable to scan directory: ${err}.`);
     }
+    else {
     res.setHeader('Content-type', 'application/json');
     res.end(JSON.stringify(files));
+    }
   });
 });
 
@@ -50,59 +54,38 @@ app.get('/files/:filename', (req, res) => {
 const { PDFNet } = require('@pdftron/pdfnet-node');
 app.get('/convert/:filename', (req, res) => {
   const filename = req.params.filename;
-  let ext = path.parse(filename).ext;
-
+  const ext = path.parse(filename).ext;
   const inputPath = path.resolve(__dirname, filesPath, filename);
   const outputPath = path.resolve(__dirname, filesPath, `${filename}.pdf`);
-
   if (ext === '.pdf') {
     res.statusCode = 500;
     res.end(`File is already PDF.`);
+    return;
   }
-
   const main = async () => {
     await PDFNet.addResourceSearchPath('./lib/');
     const pdfdoc = await PDFNet.PDFDoc.create();
     await pdfdoc.initSecurityHandler();
     await PDFNet.Convert.toPdf(pdfdoc, inputPath);
-    pdfdoc.save(
+    await pdfdoc.save(
       outputPath,
       PDFNet.SDFDoc.SaveOptions.e_linearized,
     );
-    ext = '.pdf';
   };
 
-
-  PDFNet.runWithCleanup(main, "[Your license key]").then(() => {
-    PDFNet.shutdown();
-    fs.readFile(outputPath, (err, data) => {
-      if (err) {
-        res.statusCode = 500;
-        res.end(err);
-      } else {
-        res.setHeader('Content-Type', 'application/pdf'),
-          res.end(data);
-      }
-    })
-  }).catch(err => {
-    res.statusCode = 500;
-    console.log(err)
-    res.send({ err });
-  });
-
+  PDFNetEndpoint(main, outputPath, res);
 });
 
 app.get('/convertToDOCX/:filename', (req, res) => {
-
   const filename = req.params.filename;
   let ext = path.parse(filename).ext;
-
   const inputPath = path.resolve(__dirname, filesPath, filename);
   const outputPath = path.resolve(__dirname, filesPath, `${filename}.docx`);
 
   if (ext !== '.pdf') {
     res.statusCode = 500;
     res.end(`File is not a PDF.`);
+    return;
   }
 
   const main = async () => {
@@ -116,21 +99,78 @@ app.get('/convertToDOCX/:filename', (req, res) => {
     ext = '.docx';
   };
 
-  PDFNet.runWithCleanup(main, "[Your license key]").then(() => {
-    PDFNet.shutdown();
-    fs.readFile(outputPath, (err, data) => {
-      if (err) {
-        res.statusCode = 500;
-        res.end(err);
-      } else {
-        console.log(ext);
-        res.setHeader('Content-Type', mimeType[ext]),
-          res.end(data);
-      }
-    })
-  }).catch(err => {
-    res.statusCode = 500;
-    console.log(err)
-    res.send({ err });
-  });
+  PDFNetEndpoint(main, outputPath, res);
+  
 });
+
+app.get('/thumbnail/:filename', (req, res) => {
+  const filename = req.params.filename;
+  let ext = path.parse(filename).ext;
+
+  const inputPath = path.resolve(__dirname, filesPath, filename);
+  const outputPath = path.resolve(__dirname, filesPath, `${filename}.png`);
+
+  if (ext !== '.pdf') {
+    res.statusCode = 500;
+    res.end(`Only PDFs can return a thumbnail. Cannot return a thumb for a file with extension: ${ext}.`);
+    return;
+  }
+
+  const main = async () => {
+    const doc = await PDFNet.PDFDoc.createFromFilePath(inputPath);
+    await doc.initSecurityHandler();
+    // Default dpi is 92 which gives a more or less full size image
+    const pdfdraw = await PDFNet.PDFDraw.create(12);
+    const currPage = await doc.getPage(1);
+    await pdfdraw.export(currPage, outputPath, 'PNG');
+  };
+
+  PDFNetEndpoint(main, outputPath, res);
+})
+
+app.get('/replaceContent/:name', (req, res) => {
+  // The name to be used in the document is included in the request parameters
+  const name = req.params.name.replace('_', ' ');
+  const filename = 'template_letter.pdf'
+
+  const inputPath = path.resolve(__dirname, filesPath, filename);
+  const outputPath = path.resolve(__dirname, filesPath, `${filename}_replaced.pdf`);
+
+  const main = async () => {
+    const pdfdoc = await PDFNet.PDFDoc.createFromFilePath(inputPath);
+    await pdfdoc.initSecurityHandler();
+    const replacer = await PDFNet.ContentReplacer.create();
+    const page = await pdfdoc.getPage(1);
+
+    await replacer.addString('NAME', name);
+    await replacer.addString('Address', '123 Main St, Vancouver, BC CANADA');
+    await replacer.addString('DATE', new Date(Date.now()).toLocaleString());
+    await replacer.process(page);
+
+    await pdfdoc.save(outputPath, PDFNet.SDFDoc.SaveOptions.e_linearized,);
+  };
+
+  PDFNetEndpoint(main, outputPath, res);
+});
+
+
+const PDFNetEndpoint = (main, pathname, res) => {
+    PDFNet.runWithCleanup(main, "[You license key]")
+    .then(() => {
+      PDFNet.shutdown();
+      fs.readFile(pathname, (err, data) => {
+        if (err) {
+          res.statusCode = 500;
+          res.end(`Error getting the file: ${err}.`);
+        } else {
+          const ext = path.parse(pathname).ext;
+          res.setHeader('Content-type', mimeType[ext] || 'text/plain');
+          res.end(data);
+        }
+      });
+    })
+    .catch((error) => {
+      res.statusCode = 500;
+      res.send(error);
+    });
+};
