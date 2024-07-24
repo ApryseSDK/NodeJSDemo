@@ -76,7 +76,7 @@ app.get('/convert/:filename', (req, res) => {
   PDFNetEndpoint(main, outputPath, res);
 });
 
-app.get('/convertToDOCX/:filename', (req, res) => {
+app.get('/convert-to-docx/:filename', (req, res) => {
   const filename = req.params.filename;
   let ext = path.parse(filename).ext;
   const inputPath = path.resolve(__dirname, filesPath, filename);
@@ -128,7 +128,7 @@ app.get('/thumbnail/:filename', (req, res) => {
   PDFNetEndpoint(main, outputPath, res);
 })
 
-app.get('/replaceContent/:name', (req, res) => {
+app.get('/replace-content/:name', (req, res) => {
   // The name to be used in the document is included in the request parameters
   const name = req.params.name.replace('_', ' ');
   const filename = 'template_letter.pdf'
@@ -139,6 +139,7 @@ app.get('/replaceContent/:name', (req, res) => {
   const main = async () => {
     const pdfdoc = await PDFNet.PDFDoc.createFromFilePath(inputPath);
     await pdfdoc.initSecurityHandler();
+    
     const replacer = await PDFNet.ContentReplacer.create();
     const page = await pdfdoc.getPage(1);
 
@@ -154,16 +155,16 @@ app.get('/replaceContent/:name', (req, res) => {
 });
 
 
-const PDFNetEndpoint = (main, pathname, res) => {
-    PDFNet.runWithCleanup(main, "[You license key]")
+const PDFNetEndpoint = (main, outputFilePathName, res) => {
+    PDFNet.runWithCleanup(main, "[Your license key]")
     .then(() => {
       PDFNet.shutdown();
-      fs.readFile(pathname, (err, data) => {
+      fs.readFile(outputFilePathName, (err, data) => {
         if (err) {
           res.statusCode = 500;
           res.end(`Error getting the file: ${err}.`);
         } else {
-          const ext = path.parse(pathname).ext;
+          const ext = path.parse(outputFilePathName).ext;
           res.setHeader('Content-type', mimeType[ext] || 'text/plain');
           res.end(data);
         }
